@@ -1,0 +1,67 @@
+name: Build and Publish NuGet
+
+on:
+  push:
+    branches: [ master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for versioning
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Determine version
+      id: version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+        else
+          # Use a prerelease version for non-tag builds
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          VERSION="0.0.0-dev.${SHORT_SHA}"
+        fi
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "Version: ${VERSION}"
+
+    - name: Restore
+      run: dotnet restore SlackNet/SlackNet.csproj
+
+    - name: Build
+      run: dotnet build SlackNet/SlackNet.csproj --configuration Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+
+    - name: Test
+      run: dotnet test SlackNet.Tests/SlackNet.Tests.csproj --configuration Release --verbosity normal
+      continue-on-error: true  # Tests may need Slack tokens or other config
+
+    - name: Pack
+      run: dotnet pack SlackNet/SlackNet.csproj --configuration Release --no-build -p:Version=${{ steps.version.outputs.version }} --output ./nupkgs
+
+    - name: Upload NuGet artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages
+        path: ./nupkgs/*.nupkg
+
+    - name: Push to GitHub Packages
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+      run: dotnet nuget push ./nupkgs/*.nupkg --source "https://nuget.pkg.github.com/bluesourcena/index.json" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
