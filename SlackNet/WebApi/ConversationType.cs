@@ -5,5 +5,6 @@ public enum ConversationType
     PublicChannel,
     PrivateChannel,
     Mpim,
-    Im
+    Im,
+    All
 }

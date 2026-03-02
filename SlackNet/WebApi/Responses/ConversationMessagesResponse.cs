@@ -9,3 +9,9 @@ public class ConversationMessagesResponse
     public bool HasMore { get; set; }
     public ResponseMetadata ResponseMetadata { get; set; } = new();
 }
+
+public class DiscoveryConversationMessagesResponse
+{
+    public IList<MessageEvent> Messages { get; set; } = [];
+    public string Offset { get; set; } = string.Empty;
+}
